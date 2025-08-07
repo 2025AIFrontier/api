@@ -1,0 +1,266 @@
+openapi: 3.0.3
+info:
+  title: Employee Contact API
+  version: "1.0.0"
+  description: |
+    사내 직원 연락처 관리 및 조회 API 서비스입니다.
+    
+    주요 기능:
+    - 직원 연락처 목록 조회 및 검색
+    - 부서별, 회사별 필터링
+    - 페이징 및 정렬 기능
+  contact:
+    name: API Support
+    email: admin@company.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3003
+    description: Development server
+  - url: http://aipc.sec.samsung.net/api/contacts
+    description: Production server
+
+tags:
+  - name: contacts
+    description: 직원 연락처 관리
+  - name: system
+    description: 시스템 관리
+
+paths:
+  /api/contacts:
+    get:
+      tags:
+        - contacts
+      summary: 직원 연락처 목록 조회
+      description: |
+        사내 직원들의 연락처 목록을 조회합니다.
+        다양한 검색 조건과 페이징, 정렬 기능을 지원합니다.
+      operationId: getEmployeeContacts
+      parameters:
+        - name: fullname
+          in: query
+          description: 직원 이름으로 검색 (부분 검색 지원)
+          schema:
+            type: string
+            example: "김철수"
+        - name: emailaddress
+          in: query
+          description: 이메일 주소로 검색 (부분 검색 지원)
+          schema:
+            type: string
+            format: email
+            example: "kim@company.com"
+        - name: departmentname
+          in: query
+          description: 부서명으로 필터링
+          schema:
+            type: string
+            example: "개발팀"
+        - name: companyname
+          in: query
+          description: 회사명으로 필터링
+          schema:
+            type: string
+            example: "내부전자"
+        - name: position
+          in: query
+          description: 직위로 필터링
+          schema:
+            type: string
+            example: "과장"
+        - name: location
+          in: query
+          description: 근무지로 필터링
+          schema:
+            type: string
+            example: "서울"
+        - name: page
+          in: query
+          description: 페이지 번호 (1부터 시작)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+            example: 1
+        - name: limit
+          in: query
+          description: 페이지당 결과 수
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+            example: 20
+        - name: sort_by
+          in: query
+          description: 정렬 기준 필드
+          schema:
+            type: string
+            enum: ["fullname", "departmentname", "companyname", "position"]
+            default: "fullname"
+            example: "fullname"
+        - name: sort_order
+          in: query
+          description: 정렬 순서
+          schema:
+            type: string
+            enum: ["asc", "desc"]
+            default: "asc"
+            example: "asc"
+      responses:
+        '200':
+          description: 직원 연락처 목록 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Employee'
+                  pagination:
+                    type: object
+                    properties:
+                      current_page:
+                        type: integer
+                        example: 1
+                      total_pages:
+                        type: integer
+                        example: 5
+                      total_items:
+                        type: integer
+                        example: 100
+                      items_per_page:
+                        type: integer
+                        example: 20
+                      has_next:
+                        type: boolean
+                        example: true
+                      has_prev:
+                        type: boolean
+                        example: false
+        '400':
+          description: 잘못된 요청 파라미터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: 서버 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/health:
+    get:
+      tags:
+        - system
+      summary: 서비스 상태 확인
+      description: |
+        API 서비스의 상태를 확인합니다.
+        시스템 리소스 및 데이터베이스 연결 상태도 함께 제공됩니다.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: 서비스 정상 상태
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  service:
+                    type: string
+                    example: "Employee Contact API"
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  data:
+                    type: object
+                    properties:
+                      total_employees:
+                        type: integer
+                        example: 500
+                      departments:
+                        type: integer
+                        example: 8
+                      companies:
+                        type: integer
+                        example: 5
+        '500':
+          description: 서비스 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Employee:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 직원 ID
+          example: 1
+        fullname:
+          type: string
+          description: 직원 이름
+          example: "김철수"
+        emailaddress:
+          type: string
+          format: email
+          description: 이메일 주소
+          example: "kim.cheolsu@company.com"
+        departmentname:
+          type: string
+          description: 부서명
+          example: "개발팀"
+        companyname:
+          type: string
+          description: 회사명
+          example: "내부전자"
+        position:
+          type: string
+          description: 직위
+          example: "과장"
+        location:
+          type: string
+          description: 근무지
+          example: "서울"
+        phonenumber:
+          type: string
+          description: 전화번호
+          example: "02-1234-5678"
+        mobilenumber:
+          type: string
+          description: 휴대폰 번호
+          example: "010-1234-5678"
+      
+    Error:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+          example: "요청 처리 중 오류가 발생했습니다"
+        code:
+          type: integer
+          example: 500
+        timestamp:
+          type: string
+          format: date-time

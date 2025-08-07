@@ -1,0 +1,539 @@
+openapi: 3.0.3
+info:
+  title: Reservation API
+  version: "1.0.0"
+  description: |
+    차량 예약 관리 API 서비스입니다.
+    
+    주요 기능:
+    - 차량 예약 생성, 조회, 수정, 삭제 (CRUD)
+    - PostgREST를 활용한 효율적인 데이터베이스 연동
+    - 다양한 필터링 및 페이징 기능
+    - 날짜별, 세션별 예약 관리
+  contact:
+    name: API Support
+    email: admin@company.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3007
+    description: Development server
+  - url: http://aipc.sec.samsung.net/api/reservations
+    description: Production server
+
+tags:
+  - name: reservations
+    description: 차량 예약 관리
+  - name: system
+    description: 시스템 관리
+
+paths:
+  /api/reservations:
+    get:
+      tags:
+        - reservations
+      summary: 예약 목록 조회
+      description: |
+        차량 예약 목록을 조회합니다.
+        다양한 검색 조건과 페이징, 정렬 기능을 지원합니다.
+      operationId: getReservations
+      parameters:
+        - name: type
+          in: query
+          description: 예약 타입으로 필터링
+          schema:
+            type: string
+            enum: ["car"]
+            example: "car"
+        - name: target
+          in: query
+          description: 대상 차량 번호로 필터링
+          schema:
+            type: integer
+            enum: [1, 2]
+            example: 1
+        - name: email
+          in: query
+          description: 이메일 주소로 검색 (부분 검색 지원)
+          schema:
+            type: string
+            format: email
+            example: "john.smith@example.com"
+        - name: session
+          in: query
+          description: 세션 번호로 필터링
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4
+            example: 2
+        - name: date_from
+          in: query
+          description: 시작 날짜 (YYYY-MM-DD 형식)
+          schema:
+            type: string
+            format: date
+            example: "2025-08-06"
+        - name: date_to
+          in: query
+          description: 종료 날짜 (YYYY-MM-DD 형식)
+          schema:
+            type: string
+            format: date
+            example: "2025-09-30"
+        - name: page
+          in: query
+          description: 페이지 번호 (1부터 시작)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+            example: 1
+        - name: limit
+          in: query
+          description: 페이지당 결과 수
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+            example: 20
+        - name: sort_by
+          in: query
+          description: 정렬 기준 필드
+          schema:
+            type: string
+            enum: ["time", "type", "target", "session"]
+            default: "time"
+            example: "time"
+        - name: sort_order
+          in: query
+          description: 정렬 순서
+          schema:
+            type: string
+            enum: ["asc", "desc"]
+            default: "desc"
+            example: "desc"
+      responses:
+        '200':
+          description: 예약 목록 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reservation'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          description: 잘못된 요청 파라미터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: 서버 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - reservations
+      summary: 새 예약 생성
+      description: |
+        새로운 차량 예약을 생성합니다.
+        모든 필수 필드는 반드시 포함되어야 합니다.
+      operationId: createReservation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationCreate'
+      responses:
+        '201':
+          description: 예약 생성 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+                    example: "예약이 성공적으로 생성되었습니다."
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          description: 잘못된 요청 데이터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: 서버 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/reservations/{reservationId}:
+    get:
+      tags:
+        - reservations
+      summary: 특정 예약 조회
+      description: |
+        지정된 ID의 예약 정보를 조회합니다.
+      operationId: getReservationById
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          description: 예약 ID
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: 예약 조회 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  timestamp:
+                    type: string
+                    format: date-time
+        '404':
+          description: 예약을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: 서버 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - reservations
+      summary: 예약 정보 수정
+      description: |
+        지정된 ID의 예약 정보를 수정합니다.
+      operationId: updateReservation
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          description: 예약 ID
+          schema:
+            type: integer
+            example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReservationUpdate'
+      responses:
+        '200':
+          description: 예약 수정 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+                    example: "예약이 성공적으로 수정되었습니다."
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          description: 잘못된 요청 데이터
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 예약을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: 서버 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - reservations
+      summary: 예약 삭제
+      description: |
+        지정된 ID의 예약을 삭제합니다.
+      operationId: deleteReservation
+      parameters:
+        - name: reservationId
+          in: path
+          required: true
+          description: 예약 ID
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: 예약 삭제 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Reservation'
+                  message:
+                    type: string
+                    example: "예약이 성공적으로 삭제되었습니다."
+                  timestamp:
+                    type: string
+                    format: date-time
+        '404':
+          description: 예약을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: 서버 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/health:
+    get:
+      tags:
+        - system
+      summary: 서비스 상태 확인
+      description: |
+        API 서비스의 상태를 확인합니다.
+        PostgREST 연결 상태도 함께 제공됩니다.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: 서비스 정상 상태
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  service:
+                    type: string
+                    example: "Reservation API"
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  postgrest_status:
+                    type: string
+                    enum: ["connected", "disconnected"]
+                    example: "connected"
+        '500':
+          description: 서비스 오류
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: 예약 ID (자동 생성)
+          example: 1
+        type:
+          type: string
+          description: 예약 타입
+          enum: ["car"]
+          example: "car"
+        target:
+          type: integer
+          description: 대상 차량 번호
+          enum: [1, 2]
+          example: 1
+        emailaddress:
+          type: string
+          format: email
+          description: 예약자 이메일 주소
+          example: "john.smith@example.com"
+        time:
+          type: string
+          format: date-time
+          description: 예약 시간 (ISO 8601 형식)
+          example: "2025-08-12T09:30:00"
+        session:
+          type: integer
+          description: 세션 번호 (1-4)
+          minimum: 1
+          maximum: 4
+          example: 2
+        reason:
+          type: string
+          description: 예약 사유
+          example: "비즈니스 미팅 참석"
+
+    ReservationCreate:
+      type: object
+      required:
+        - type
+        - target
+        - emailaddress
+        - session
+        - reason
+      properties:
+        type:
+          type: string
+          enum: ["car"]
+          example: "car"
+        target:
+          type: integer
+          enum: [1, 2]
+          example: 1
+        emailaddress:
+          type: string
+          format: email
+          example: "john.smith@example.com"
+        time:
+          type: string
+          format: date-time
+          description: 예약 시간 (선택사항, 미입력 시 현재 시간)
+          example: "2025-08-12T09:30:00"
+        session:
+          type: integer
+          minimum: 1
+          maximum: 4
+          example: 2
+        reason:
+          type: string
+          example: "비즈니스 미팅 참석"
+
+    ReservationUpdate:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: ["car"]
+          example: "car"
+        target:
+          type: integer
+          enum: [1, 2]
+          example: 2
+        emailaddress:
+          type: string
+          format: email
+          example: "john.smith@example.com"
+        time:
+          type: string
+          format: date-time
+          example: "2025-08-12T14:30:00"
+        session:
+          type: integer
+          minimum: 1
+          maximum: 4
+          example: 3
+        reason:
+          type: string
+          example: "수정된 예약 사유"
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: 전체 결과 수
+          example: 100
+        page:
+          type: integer
+          description: 현재 페이지 번호
+          example: 1
+        limit:
+          type: integer
+          description: 페이지당 결과 수
+          example: 20
+        offset:
+          type: integer
+          description: 결과 오프셋
+          example: 0
+        pages:
+          type: integer
+          description: 전체 페이지 수
+          example: 5
+        has_next:
+          type: boolean
+          description: 다음 페이지 존재 여부
+          example: true
+        has_prev:
+          type: boolean
+          description: 이전 페이지 존재 여부
+          example: false
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "요청 처리 중 오류가 발생했습니다"
+        error:
+          type: string
+          description: 상세 오류 메시지 (디버그 모드에서만 제공)
+          example: "Database connection failed"
+        timestamp:
+          type: string
+          format: date-time
