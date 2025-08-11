@@ -348,7 +348,7 @@ def run_scheduled_api2db():
     except Exception as e:
         print(f"[{now_kst()}] 스케줄된 환율 API 업데이트 오류: {str(e)}")
 
-@app.route('/exchange_api2db', methods=['GET'])
+@app.route('/api/exchange_api2db', methods=['GET'])
 def api2db():
     """
     [수정됨] 한국수출입은행 환율 API → 데이터베이스 저장 기능.
@@ -362,7 +362,7 @@ def api2db():
 # ===== 1번 항목 수정: db2api 성능 최적화 ==========================
 # =================================================================
 
-@app.route('/exchange_db2api', methods=['GET'])
+@app.route('/api/exchange_db2api', methods=['GET'])
 def db2api():
     """
     [수정됨] 데이터베이스 → API 환율 데이터 제공 기능.
