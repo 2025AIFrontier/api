@@ -21,6 +21,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import urllib3
 import os
 import sys
@@ -124,10 +125,18 @@ EXCHANGE_API_AUTH_KEY = config['exchange']['api']['auth_key']
 # 지원 통화 목록 (한국수출입은행 API 기준)
 CURRENCIES = ['USD', 'EUR', 'JPY100', 'CNH']
 
+# 시간대 헬퍼 (한국 기준 시간)
+def now_kst():
+    return datetime.now(ZoneInfo("Asia/Seoul"))
+
+def today_kst():
+    return now_kst().date()
+
 def get_business_days(days):
     """영업일 계산 함수 (주말 제외)"""
     result = []
-    current = datetime.now()
+    # 한국(서울) 시간 기준으로 날짜 계산
+    current = now_kst()
     count = 0
     while count < days:
         if current.weekday() < 5:  # 월-금
@@ -205,7 +214,8 @@ def sync_exchange_data_from_api():
         
         latest_data = postgrest_request('GET', EXCHANGE_RATES_TABLE, params={'select': 'date', 'order': 'date.desc', 'limit': 1})
         
-        today = datetime.now().date()
+        # 한국(서울) 기준 오늘 날짜
+        today = today_kst()
         if latest_data['success'] and latest_data['data']:
             latest_date_str = latest_data['data'][0]['date']
             latest_date = datetime.strptime(latest_date_str, '%Y-%m-%d').date()
@@ -328,18 +338,18 @@ def sync_exchange_data_from_api():
 def run_scheduled_api2db():
     """[수정됨] 스케줄러에서 실행할 함수. Flask 컨텍스트 없이 핵심 로직을 직접 호출합니다."""
     try:
-        print(f"[{datetime.now()}] 스케줄된 환율 API 업데이트 시작...")
+        print(f"[{now_kst()}] 스케줄된 환율 API 업데이트 시작...")
         
         # Flask 컨텍스트 없이 핵심 로직 함수를 직접 호출
         result = sync_exchange_data_from_api()
         
         if result.get('success'):
-            print(f"[{datetime.now()}] 스케줄된 환율 API 업데이트 성공: {result.get('summary', '')}")
+            print(f"[{now_kst()}] 스케줄된 환율 API 업데이트 성공: {result.get('summary', '')}")
         else:
-            print(f"[{datetime.now()}] 스케줄된 환율 API 업데이트 실패: {result.get('error', '')}")
-        
+            print(f"[{now_kst()}] 스케줄된 환율 API 업데이트 실패: {result.get('error', '')}")
+    
     except Exception as e:
-        print(f"[{datetime.now()}] 스케줄된 환율 API 업데이트 오류: {str(e)}")
+        print(f"[{now_kst()}] 스케줄된 환율 API 업데이트 오류: {str(e)}")
 
 @app.route('/exchange_api2db', methods=['GET'])
 def api2db():
@@ -362,19 +372,24 @@ def db2api():
     루프 내 DB 조회를 제거하고 일괄 조회 방식으로 변경하여 성능을 개선합니다.
     """
     try:
-        days = request.args.get('days')
+        days_param = request.args.get('days')
         format_type = request.args.get('format')
         
-        if not days or not format_type:
-            return jsonify({"error": "days와 format 파라미터가 필요합니다"}), 400
+        if not format_type:
+            return jsonify({"error": "format 파라미터가 필요합니다"}), 400
             
-        days = int(days)
         format_type = format_type.lower()
+        if format_type not in ['web', 'chat']:
+            return jsonify({"error": "format은 'web' 또는 'chat'이어야 합니다"}), 400
+        
+        # format별 기본값 설정
+        if format_type == 'chat':
+            days = int(days_param) if days_param else 2  # chat 기본값: 2일
+        elif format_type == 'web':
+            days = int(days_param) if days_param else 14  # web 기본값: 14일
         
         if days < 1 or days > 100:
             return jsonify({"error": "days는 1-100 사이여야 합니다"}), 400
-        if format_type not in ['web', 'chat']:
-            return jsonify({"error": "format은 'web' 또는 'chat'이어야 합니다"}), 400
 
         business_days = get_business_days(days)
         if not business_days:
@@ -385,6 +400,7 @@ def db2api():
         date_strs_to_fetch = [d.strftime('%Y-%m-%d') for d in business_days]
         
         # 단 한 번의 요청으로 모든 날짜의 데이터를 가져옴
+        print(f"🔍 요청된 날짜들: {date_strs_to_fetch}")
         all_data_result = postgrest_request(
             'GET', EXCHANGE_RATES_TABLE, 
             params={
@@ -392,7 +408,43 @@ def db2api():
                 'order': 'date.desc' # 최신순으로 정렬
             }
         )
+        
+        print(f"📊 조회된 데이터 개수: {len(all_data_result.get('data', []))}")
+        if all_data_result.get('data'):
+            available_dates = [item['date'] for item in all_data_result['data']]
+            print(f"📅 조회된 날짜들: {available_dates}")
 
+        # 3단계: 가장 최근 영업일 데이터 확인 (chat/web 공통)
+        latest_date_str = business_days[0].strftime('%Y-%m-%d')
+        latest_data_exists = False
+        
+        if all_data_result['success'] and all_data_result['data']:
+            available_dates = [item['date'] for item in all_data_result['data']]
+            latest_data_exists = latest_date_str in available_dates
+            print(f"✅ 최신 영업일({latest_date_str}) 데이터 존재: {latest_data_exists}")
+        
+        # 3-1단계: 최신 데이터가 없으면 api2db 실행
+        if not latest_data_exists:
+            print(f"❌ 최신 영업일({latest_date_str}) 데이터 없음. api2db 자동 실행 중...")
+            
+            api2db_result = sync_exchange_data_from_api()
+            if api2db_result['success']:
+                print("✅ api2db 실행 완료. 데이터 다시 조회 중...")
+                
+                # 데이터 다시 조회 (재귀 호출 대신 직접 조회)
+                all_data_result = postgrest_request(
+                    'GET', EXCHANGE_RATES_TABLE, 
+                    params={
+                        'date': f'in.({",".join(date_strs_to_fetch)})',
+                        'order': 'date.desc'
+                    }
+                )
+                print(f"🔄 재조회 결과: {len(all_data_result.get('data', []))}개")
+            else:
+                print(f"❌ api2db 실행 실패: {api2db_result.get('error', '알 수 없는 오류')}")
+                return jsonify({"error": f"api2db 실행 실패: {api2db_result.get('error', '알 수 없는 오류')}"}), 500
+        
+        # 최종 데이터 확인
         if not all_data_result['success'] or not all_data_result['data']:
             return jsonify({"error": "요청된 기간의 환율 데이터가 없습니다"}), 404
         
@@ -427,7 +479,7 @@ def db2api():
         elif format_type == 'chat':
             # [수정됨] 이미 가져온 데이터(db_data)에서 최신 2일치 데이터를 사용
             if len(db_data) < 2:
-                return jsonify({"error": "변화율 계산을 위해 최소 2일의 데이터가 필요합니다"}), 400
+                return jsonify({"error": "변화율 계산을 위해 최소 2일의 데이터가 필요합니다"}), 404
                 
             today_data = db_data[0]
             yesterday_data = db_data[1]
@@ -540,7 +592,8 @@ if __name__ == '__main__':
                 func=run_scheduled_api2db, # 수정된 스케줄러 함수를 등록
                 trigger=CronTrigger(
                     hour=config['exchange']['scheduler']['daily_update_hour'],
-                    minute=config['exchange']['scheduler']['daily_update_minute']
+                    minute=config['exchange']['scheduler']['daily_update_minute'],
+                    timezone=ZoneInfo("Asia/Seoul")
                 ),
                 id='daily_exchange_update',
                 name='Daily Exchange Rate Update',
