@@ -106,11 +106,8 @@ config = load_config_from_db()
 
 app = Flask(__name__)
 
-# CORS 설정 - Admin 대시보드와 Web 개발서버에서 직접 접근 허용
-CORS(app, origins=["http://localhost:3001", "http://localhost:3002", "http://localhost:80", "http://localhost", 
-                   "http://127.0.0.1:3001", "http://127.0.0.1:3002", 
-                   "http://aipc.sec.samsung.net", "http://10.252.92.75"], 
-     supports_credentials=True)
+# CORS 설정 - 모든 도메인 허용
+CORS(app)
 
 # 스케줄러 초기화
 scheduler = BackgroundScheduler(daemon=True)
