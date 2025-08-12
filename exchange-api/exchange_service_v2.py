@@ -106,8 +106,7 @@ config = load_config_from_db()
 
 app = Flask(__name__)
 
-# CORS 설정 - 모든 도메인 허용
-CORS(app)
+# CORS 설정 - nginx에서 처리하므로 제거
 
 # 스케줄러 초기화
 scheduler = BackgroundScheduler(daemon=True)

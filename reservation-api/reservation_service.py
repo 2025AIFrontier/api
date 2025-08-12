@@ -6,14 +6,9 @@ import requests
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 
-# --- Flask 앱 및 CORS 설정 ---
+# --- Flask 앱 설정 ---
 app = Flask(__name__)
-CORS(app, origins=[
-    "http://localhost:3001",
-    "http://localhost:3002",
-    "http://10.252.92.75",
-    "http://aipc.sec.samsung.net"
-])
+# CORS 설정 - nginx에서 처리하므로 제거
 
 # JSON 인코딩 설정: 한글 깨짐 방지
 app.config['JSON_AS_ASCII'] = False
@@ -74,7 +69,7 @@ def load_config_from_db():
 
 # --- API 엔드포인트 ---
 
-@app.route('/api/reservations', methods=['GET'])
+@app.route('/api/reservation_list', methods=['GET'])
 def get_reservations():
     """(최적화) 예약 목록 조회 API - 단일 PostgREST 호출"""
     try:
@@ -131,7 +126,7 @@ def get_reservations():
     except Exception as e:
         return api_error('예약 조회 중 서버 오류가 발생했습니다.', 500, e)
 
-@app.route('/api/reservations', methods=['POST'])
+@app.route('/api/reservation_create', methods=['POST'])
 def create_reservation():
     """예약 생성 API - PostgREST 활용"""
     try:
@@ -180,7 +175,7 @@ def create_reservation():
     except Exception as e:
         return api_error('예약 생성 중 서버 오류가 발생했습니다.', 500, e)
 
-@app.route('/api/reservations/<int:reservation_id>', methods=['GET'])
+@app.route('/api/reservation_get/<int:reservation_id>', methods=['GET'])
 def get_reservation(reservation_id):
     """특정 예약 조회 API - PostgREST 활용"""
     try:
@@ -198,7 +193,7 @@ def get_reservation(reservation_id):
     except Exception as e:
         return api_error('예약 조회 중 서버 오류가 발생했습니다.', 500, e)
 
-@app.route('/api/reservations/<int:reservation_id>', methods=['PATCH'])  # NOTE: 부분 수정을 의미하는 PATCH로 변경
+@app.route('/api/reservation_update/<int:reservation_id>', methods=['PATCH'])
 def update_reservation(reservation_id):
     """예약 수정 API - PostgREST 활용"""
     try:
@@ -224,7 +219,7 @@ def update_reservation(reservation_id):
     except Exception as e:
         return api_error('예약 수정 중 서버 오류가 발생했습니다.', 500, e)
 
-@app.route('/api/reservations/<int:reservation_id>', methods=['DELETE'])
+@app.route('/api/reservation_delete/<int:reservation_id>', methods=['DELETE'])
 def delete_reservation(reservation_id):
     """예약 삭제 API - PostgREST 활용"""
     try:
@@ -244,6 +239,41 @@ def delete_reservation(reservation_id):
         return api_error(f'예약 삭제 실패: {e.response.status_code}', e.response.status_code, e.response.text)
     except Exception as e:
         return api_error('예약 삭제 중 서버 오류가 발생했습니다.', 500, e)
+
+# --- 캘린더 전용 엔드포인트 ---
+
+@app.route('/api/reservation_calendar', methods=['GET'])
+def get_calendar_reservations():
+    """캘린더용 예약 조회 API - 날짜 범위로 예약 조회"""
+    try:
+        # 쿼리 파라미터에서 필터 조건 추출
+        query_params = []
+        
+        # 날짜 범위 필터
+        if request.args.get('date_from'):
+            query_params.append(f'time=gte.{request.args.get("date_from")}')
+        if request.args.get('date_to'):
+            query_params.append(f'time=lte.{request.args.get("date_to")}')
+        
+        # 타입 필터 (기본값: car)
+        reservation_type = request.args.get('type', 'car')
+        query_params.append(f'type=eq.{reservation_type}')
+        
+        # 정렬 (시간순)
+        query_params.append('order=time.asc')
+        
+        # PostgREST API 호출
+        url = f'{POSTGREST_BASE_URL}/reservation_table?{"&".join(query_params)}'
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        return api_success(data=data)
+        
+    except requests.exceptions.HTTPError as e:
+        return api_error(f'PostgREST API 오류: {e.response.status_code}', e.response.status_code, e.response.text)
+    except Exception as e:
+        return api_error('캘린더 예약 조회 중 서버 오류가 발생했습니다.', 500, e)
 
 # --- 유틸리티 엔드포인트 ---
 
