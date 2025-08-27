@@ -488,10 +488,10 @@ def db2api():
 
                 if today_rate is not None and yest_rate is not None and yest_rate != 0:
                     change_rate = ((today_rate - yest_rate) / yest_rate) * 100
-                    formatted_rates[currency] = round(today_rate, 2)
+                    formatted_rates[currency] = round(today_rate, 1)
                     formatted_rates[f"{currency}_trend"] = round(change_rate, 2)
                 else:
-                    formatted_rates[currency] = round(today_rate, 2) if today_rate is not None else 0
+                    formatted_rates[currency] = round(today_rate, 1) if today_rate is not None else 0
                     formatted_rates[f"{currency}_trend"] = 0.0
 
             return jsonify({
