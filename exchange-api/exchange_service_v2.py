@@ -488,11 +488,20 @@ def db2api():
 
                 if today_rate is not None and yest_rate is not None and yest_rate != 0:
                     change_rate = ((today_rate - yest_rate) / yest_rate) * 100
-                    formatted_rates[currency] = round(today_rate, 1)
-                    formatted_rates[f"{currency}_trend"] = round(change_rate, 2)
+                    formatted_rates[currency] = round(today_rate, 2)
+                    # 변동율을 소수점 첫째자리까지만 표시
+                    formatted_rates[f"{currency}_trend"] = round(change_rate, 1)
+                    # 색상 정보 추가: 상승은 red, 하락은 blue
+                    if change_rate > 0:
+                        formatted_rates[f"{currency}_color"] = "red"
+                    elif change_rate < 0:
+                        formatted_rates[f"{currency}_color"] = "blue"
+                    else:
+                        formatted_rates[f"{currency}_color"] = "black"  # 변동 없음
                 else:
-                    formatted_rates[currency] = round(today_rate, 1) if today_rate is not None else 0
+                    formatted_rates[currency] = round(today_rate, 2) if today_rate is not None else 0
                     formatted_rates[f"{currency}_trend"] = 0.0
+                    formatted_rates[f"{currency}_color"] = "black"  # 데이터 없음 또는 변동 없음
 
             return jsonify({
                 'success': True,
@@ -504,7 +513,7 @@ def db2api():
                     },
                     'requested_days': days,
                     'format': 'chat',
-                    'description': 'Rate comparison with trend analysis for chatbot'
+                    'description': 'Rate comparison with trend analysis and color coding for chatbot'
                 }
             })
 
